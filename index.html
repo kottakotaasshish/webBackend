@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flask API Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: auto; }
+        input, button { margin: 5px 0; width: 100%; padding: 8px; }
+        .container { display: none; margin-top: 20px; }
+        #public-container, #signup-container, #login-container, #home-container { display: none; }
+    </style>
+</head>
+<body>
+    <h1>Flask API Test</h1>
+
+    <!-- Public Items Page -->
+    <div class="container" id="public-container">
+        <h2>Public Information</h2>
+        <ul id="public-items-list"></ul>
+    </div>
+
+    <!-- Signup Page -->
+    <div class="container" id="signup-container">
+        <h2>Sign Up</h2>
+        <input type="text" id="signup-username" placeholder="Username">
+        <input type="password" id="signup-password" placeholder="Password">
+        <button onclick="signup()">Sign Up</button>
+        <p id="signup-response"></p>
+        <button onclick="showLogin()">Already have an account? Login</button>
+    </div>
+
+    <!-- Login Page -->
+    <div class="container" id="login-container">
+        <h2>Login</h2>
+        <input type="text" id="login-username" placeholder="Username">
+        <input type="password" id="login-password" placeholder="Password">
+        <button onclick="login()">Login</button>
+        <p id="login-response"></p>
+        <button onclick="showSignup()">Don't have an account? Sign Up</button>
+    </div>
+
+    <!-- Home Page -->
+    <div class="container" id="home-container">
+        <h2>Home</h2>
+        <p>Welcome! You are logged in.</p>
+        <input type="file" id="file-input">
+        <button onclick="uploadFile()">Upload File</button>
+        <p id="upload-response"></p>
+        <h3>Your Uploaded Files</h3>
+        <ul id="uploaded-files"></ul>
+        <button onclick="logout()">Logout</button>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            const storedToken = localStorage.getItem('authToken');
+            if (storedToken) {
+                authToken = storedToken;
+                showHome();
+                fetchUploadedFiles();
+            } else {
+                showPublicItems();
+                showLogin();
+            }
+        });
+
+        let authToken = '';
+
+        function showPublicItems() {
+            document.getElementById('public-container').style.display = 'block';
+            fetchPublicItems();
+        }
+
+        function showSignup() {
+            document.getElementById('signup-container').style.display = 'block';
+            document.getElementById('login-container').style.display = 'none';
+            document.getElementById('home-container').style.display = 'none';
+        }
+
+        function showLogin() {
+            document.getElementById('signup-container').style.display = 'none';
+            document.getElementById('login-container').style.display = 'block';
+            document.getElementById('home-container').style.display = 'none';
+        }
+
+        function showHome() {
+            document.getElementById('signup-container').style.display = 'none';
+            document.getElementById('login-container').style.display = 'none';
+            document.getElementById('home-container').style.display = 'block';
+        }
+
+        async function deleteFile(fileId) {
+            console.log("File Id", fileId);
+            const response = await fetch(`http://127.0.0.1:5000/delete-file/${fileId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+
+            const data = await response.json();
+            document.getElementById('upload-response').innerText = data.message || data.error;
+            if (response.ok) {
+                fetchUploadedFiles(); // Refresh the file list after deletion
+            }
+        }   
+
+
+        async function fetchPublicItems() {
+            const response = await fetch('http://127.0.0.1:5000/public-items');
+            const data = await response.json();
+            const itemList = document.getElementById('public-items-list');
+            itemList.innerHTML = ''; // Clear previous list
+            data.public_items.forEach(item => {
+                const listItem = document.createElement('li');
+                listItem.textContent = `${item.title}: ${item.description}`;
+                itemList.appendChild(listItem);
+            });
+        }
+
+        async function signup() {
+            const username = document.getElementById('signup-username').value;
+            const password = document.getElementById('signup-password').value;
+
+            const response = await fetch('http://127.0.0.1:5000/signup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await response.json();
+            document.getElementById('signup-response').innerText = data.message || data.error;
+            if (response.ok) {
+                showLogin();
+            }
+        }
+
+        async function login() {
+            const username = document.getElementById('login-username').value;
+            const password = document.getElementById('login-password').value;
+
+            const response = await fetch('http://127.0.0.1:5000/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await response.json();
+            if (response.ok) {
+                authToken = data.access_token;
+                localStorage.setItem('authToken', authToken);
+                document.getElementById('login-response').innerText = 'Login successful!';
+                showHome();
+                fetchUploadedFiles();
+            } else {
+                document.getElementById('login-response').innerText = data.error;
+            }
+        }
+
+        async function uploadFile() {
+            const fileInput = document.getElementById('file-input');
+            if (!fileInput.files.length) {
+                document.getElementById('upload-response').innerText = 'Please select a file.';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            const response = await fetch('http://127.0.0.1:5000/upload', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${authToken}` },
+                body: formData
+            });
+
+            const data = await response.json();
+            document.getElementById('upload-response').innerText = data.message || data.error;
+            if (response.ok) {
+                fetchUploadedFiles();
+            }
+        }
+
+        async function fetchUploadedFiles() {
+    const response = await fetch('http://127.0.0.1:5000/uploads', {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${authToken}` }
+
+        
+    });
+
+    const data = await response.json();
+    const fileList = document.getElementById('uploaded-files');
+    fileList.innerHTML = '';
+    data.uploads.forEach(file => {
+        const listItem = document.createElement('li');
+        listItem.innerHTML = `
+                    ${file.filename} - Path: ${file.upload_path} - Uploaded on: ${file.upload_date}
+                    <button onclick="deleteFile('${file.filename}')">Delete</button>
+                    <input type="text" id="new-filename-${file.filename}" placeholder="New file name">
+                    <button onclick="updateFileName('${file.filename}')">Update Name</button>
+                `;
+        fileList.appendChild(listItem);
+    });
+}
+
+async function deleteFile(filename) {
+    const response = await fetch(`http://127.0.0.1:5000/delete-file/${filename}`, {
+        method: 'DELETE',
+        headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    const data = await response.json();
+    if (response.ok) {
+        alert(data.message);
+        fetchUploadedFiles(); // Refresh the file list
+    } else {
+        alert(data.error);
+    }
+}
+
+async function updateFileName(filename) {
+            // ---changes---
+            const newFilename = document.getElementById(`new-filename-${filename}`).value;
+            if (!newFilename) {
+                alert("Please enter a new filename.");
+                return;
+            }
+
+            const response = await fetch(`http://127.0.0.1:5000/update-file/${filename}`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ new_filename: newFilename })
+            });
+
+            const data = await response.json();
+            alert(data.message || data.error);
+
+            if (response.ok) {
+                fetchUploadedFiles(); // Refresh the file list
+            }
+            // ---changes---
+}
+
+
+        function logout() {
+            authToken = '';
+            localStorage.removeItem('authToken');
+            document.getElementById('upload-response').innerText = '';
+            document.getElementById('uploaded-files').innerHTML = '';
+            showLogin();
+        }
+    </script>
+</body>
+</html>
+
